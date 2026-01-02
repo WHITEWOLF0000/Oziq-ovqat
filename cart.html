@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Savatcha</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --primary: #2ecc71;
+            --bg: #f8f9fa;
+            --white: #ffffff;
+            --text: #2d3436;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 15px; padding-bottom: 100px; color: var(--text); }
+
+        .header { display: flex; align-items: center; gap: 15px; margin-bottom: 20px; }
+        .back-btn { background: var(--white); border: none; width: 40px; height: 40px; border-radius: 50%; font-size: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); cursor: pointer; }
+
+        .cart-item {
+            background: var(--white);
+            padding: 12px;
+            border-radius: 20px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+        }
+
+        .cart-item img { width: 60px; height: 60px; border-radius: 12px; object-fit: cover; }
+        .item-info { flex-grow: 1; }
+        .item-info b { display: block; font-size: 14px; margin-bottom: 2px; }
+        .item-info span { color: var(--primary); font-weight: 800; font-size: 13px; }
+
+        .counter { display: flex; align-items: center; gap: 10px; background: #f1f2f6; padding: 4px; border-radius: 10px; }
+        .count-btn { background: var(--white); border: none; width: 28px; height: 28px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        
+        .empty-cart { text-align: center; margin-top: 50px; color: #999; }
+        .cart-summary { background: var(--white); padding: 20px; border-radius: 20px; margin-top: 20px; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); }
+
+        .navbar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--white); height: 70px; display: flex; justify-content: space-around; align-items: center; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); border-radius: 20px 20px 0 0; z-index: 1000; }
+        .nav-item { display: flex; flex-direction: column; align-items: center; text-decoration: none; color: #b2bec3; font-size: 12px; font-weight: 600; }
+        .nav-item.active { color: var(--primary); }
+        .nav-icon { font-size: 20px; margin-bottom: 2px; }
+        .nav-cart { background: var(--primary); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; margin-top: -35px; box-shadow: 0 8px 20px rgba(46, 204, 113, 0.3); position: relative; }
+        .badge { position: absolute; top: 0; right: 0; background: #ff4757; color: white; font-size: 10px; padding: 3px 7px; border-radius: 10px; border: 2px solid var(--white); }
+
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 2000; }
+        .modal-content { background: var(--white); padding: 30px; border-radius: 20px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.1); max-width: 300px; width: 90%; }
+        .modal-content p { margin: 0 0 20px 0; font-size: 18px; color: var(--text); }
+        .modal-content button { border: none; padding: 12px 25px; border-radius: 15px; font-weight: bold; font-size: 16px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <button class="back-btn" onclick="location.href='index.html'">←</button>
+        <h2 style="margin:0">Savatcha</h2>
+    </div>
+
+    <div id="cart-items"></div>
+
+    <div id="cart-footer" class="cart-summary" style="display: none;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+            <span style="color: #636e72;">Jami summa:</span>
+            <b id="total-price" style="font-size: 18px; color: var(--primary);">0 so'm</b>
+        </div>
+        <button id="order-btn" style="width: 100%; background: var(--primary); color: white; border: none; padding: 15px; border-radius: 15px; font-weight: bold; font-size: 16px;">
+            Buyurtmani tasdiqlash
+        </button>
+    </div>
+
+    <div id="order-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <p>Buyurtmani tasdiqlaysizmi?</p>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button id="confirm-yes" style="background: var(--primary); color: white;">Ha, to'lash</button>
+                <button id="confirm-no" style="background: #e74c3c; color: white;">Yo'q</button>
+            </div>
+        </div>
+    </div>
+
+    <nav class="navbar">
+        <a href="index.html" class="nav-item">
+            <span class="nav-icon">🏠</span>
+            <span>Asosiy</span>
+        </a>
+        <a href="cart.html" class="nav-item active">
+            <div class="nav-cart">
+                🛒
+                <span class="badge" id="cart-count">0</span>
+            </div>
+        </a>
+        <a href="profile.html" class="nav-item">
+            <span class="nav-icon">👤</span>
+            <span>Profil</span>
+        </a>
+    </nav>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+
+        const foods = [
+            { id: 1, name: 'Mol go\'shtli Lavash', price: 32000, img: 'https://maxway.uz/_next/image?url=https%3A%2F%2Fcdn.delever.uz%2Frepository%2Fproduct%2F71d9f860-29c3-4f9e-a890-482f09673906.jpg&w=1920&q=75' },
+            { id: 2, name: 'Pishloqli Lavash', price: 37000, img: 'https://maxway.uz/_next/image?url=https%3A%2F%2Fcdn.delever.uz%2Frepository%2Fproduct%2Ff5855018-8098-469b-891d-eb8117769502.jpg&w=1920&q=75' },
+            { id: 3, name: 'Tovuqli Lavash', price: 30000, img: 'https://maxway.uz/_next/image?url=https%3A%2F%2Fcdn.delever.uz%2Frepository%2Fproduct%2F4d257a0b-166c-4860-983b-f4211158d69d.jpg&w=1920&q=75' },
+            { id: 4, name: 'Gamburger', price: 25000, img: 'https://maxway.uz/_next/image?url=https%3A%2F%2Fcdn.delever.uz%2Frepository%2Fproduct%2F9b343834-31dc-4919-9430-84c679a61575.jpg&w=1920&q=75' },
+            { id: 5, name: 'Chizburger', price: 29000, img: 'https://maxway.uz/_next/image?url=https%3A%2F%2Fcdn.delever.uz%2Frepository%2Fproduct%2F2127110e-a579-4089-94b5-6800fa1b6910.jpg&w=1920&q=75' },
+            { id: 6, name: 'Double Burger', price: 42000, img: 'https://maxway.uz/_next/image?url=https%3A%2F%2Fcdn.delever.uz%2Frepository%2Fproduct%2F099042c0-75c1-4560-8f96-2679237c95e1.jpg&w=1920&q=75' },
+            { id: 11, name: 'Klassik Xot-dog', price: 15000, img: 'https://maxway.uz/_next/image?url=https%3A%2F%2Fcdn.delever.uz%2Frepository%2Fproduct%2F09805903-8631-4081-987d-4181f8f35212.jpg&w=1920&q=75' },
+            { id: 12, name: 'Qirolicha Xot-dog', price: 22000, img: 'https://maxway.uz/_next/image?url=https%3A%2F%2Fcdn.delever.uz%2Frepository%2Fproduct%2F205f03f7-9912-463d-862d-0759f2a71465.jpg&w=1920&q=75' },
+            { id: 7, name: 'Pepperoni Pitsa', price: 75000, img: 'https://cp.bellissimo.uz/storage/products/September2023/X96S2eXp2C0C3N7N1B6B.jpg' },
+            { id: 8, name: 'Margarita Pitsa', price: 65000, img: 'https://cp.bellissimo.uz/storage/products/September2023/mN9S7uY5i8B6v4W1B1S1.jpg' },
+            { id: 9, name: 'Meksikancha Pitsa', price: 80000, img: 'https://cp.bellissimo.uz/storage/products/September2023/pW5E1rV9g4R8s4M1M1T1.jpg' },
+            { id: 10, name: 'Coca-Cola 1.5L', price: 14000, img: 'https://images.uzum.uz/cl7j7g7n7c6qm23hsc7g/original.jpg' },
+            { id: 13, name: 'Fanta 1.5L', price: 14000, img: 'https://images.uzum.uz/cl7j7kn6sfhsc0ulo7kg/original.jpg' },
+            { id: 14, name: 'Sprite 1.5L', price: 14000, img: 'https://images.uzum.uz/cl7j7mfn7c6qm23hsc90/original.jpg' },
+            { id: 15, name: 'Kofe Americano', price: 15000, img: 'https://images.uzum.uz/clbtu5n6sfhsc0um2iq0/original.jpg' }
+        ];
+
+        let cart = {};
+
+        function renderCart() {
+            cart = JSON.parse(localStorage.getItem('cart')) || {};
+            const container = document.getElementById('cart-items');
+            const footer = document.getElementById('cart-footer');
+            container.innerHTML = '';
+            let total = 0;
+            let hasItems = false;
+
+            for (let id in cart) {
+                const food = foods.find(f => f.id == parseInt(id));
+                if (food) {
+                    hasItems = true;
+                    const count = cart[id];
+                    total += food.price * count;
+                    container.innerHTML += `
+                        <div class="cart-item">
+                            <img src="${food.img}">
+                            <div class="item-info">
+                                <b>${food.name}</b>
+                                <span>${(food.price * count).toLocaleString()} so'm</span>
+                            </div>
+                            <div class="counter">
+                                <button class="count-btn" onclick="updateQty(${id}, -1)">-</button>
+                                <span>${count}</span>
+                                <button class="count-btn" onclick="updateQty(${id}, 1)">+</button>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            if (!hasItems) {
+                container.innerHTML = `<div class="empty-cart"><p style="font-size: 50px;">🛒</p><p>Savatchangiz bo'sh</p></div>`;
+                footer.style.display = 'none';
+            } else {
+                footer.style.display = 'block';
+                document.getElementById('total-price').innerText = total.toLocaleString() + " so'm";
+            }
+            updateBadge();
+        }
+
+        function updateQty(id, delta) {
+            cart = JSON.parse(localStorage.getItem('cart')) || {};
+            cart[id] = (cart[id] || 0) + delta;
+            if (cart[id] <= 0) delete cart[id];
+            localStorage.setItem('cart', JSON.stringify(cart));
+            renderCart();
+            if(tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        }
+
+        function updateBadge() {
+            const currentCart = JSON.parse(localStorage.getItem('cart')) || {};
+            let count = Object.values(currentCart).reduce((a, b) => a + b, 0);
+            const badge = document.getElementById('cart-count');
+            if (badge) {
+                badge.innerText = count;
+                badge.style.display = count > 0 ? 'block' : 'none';
+            }
+        }
+
+        // TUGMALAR LOGIKASI
+        document.getElementById('order-btn').onclick = function() {
+            document.getElementById('order-modal').style.display = 'flex';
+        };
+
+        document.getElementById('confirm-no').onclick = function() {
+            document.getElementById('order-modal').style.display = 'none';
+        };
+
+        document.getElementById('confirm-yes').onclick = function() {
+            const currentCart = JSON.parse(localStorage.getItem('cart')) || {};
+            let orderSummary = [];
+            let total = 0;
+
+            for (let id in currentCart) {
+                const food = foods.find(f => f.id == parseInt(id));
+                if(food) {
+                    orderSummary.push(`${food.name} (${currentCart[id]}x)`);
+                    total += food.price * currentCart[id];
+                }
+            }
+            
+            // BOTGA TO'LOV UCHUN MA'LUMOT YUBORISH
+            tg.sendData(JSON.stringify({
+                action: "payment_request",
+                items: orderSummary.join(", "),
+                total_price: total
+            }));
+            
+            localStorage.removeItem('cart');
+            document.getElementById('order-modal').style.display = 'none';
+            tg.close();
+        };
+
+        window.onload = renderCart;
+    </script>
+</body>
+</html>

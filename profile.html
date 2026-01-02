@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mening Profilim</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --primary: #2ecc71;
+            --bg: #f4f4f7;
+            --white: #ffffff;
+            --text: #2d3436;
+            --danger: #ff4757;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 15px; padding-bottom: 100px; color: var(--text); }
+        
+        .header-nav { display: flex; justify-content: flex-start; margin-bottom: 15px; }
+
+        .btn-close {
+            background: var(--white); color: var(--danger); border: none;
+            padding: 8px 16px; border-radius: 12px; font-weight: bold;
+            font-size: 14px; display: flex; align-items: center; gap: 5px;
+            cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .profile-card {
+            background: var(--white); border-radius: 25px; padding: 25px;
+            text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); margin-bottom: 20px;
+        }
+
+        .avatar {
+            width: 70px; height: 70px; background: var(--primary);
+            color: white; border-radius: 50%; display: flex;
+            align-items: center; justify-content: center;
+            font-size: 30px; font-weight: bold; margin: 0 auto 15px;
+        }
+
+        .user-details { text-align: left; margin-top: 20px; }
+        .detail-item {
+            background: #f9f9fb; padding: 12px 15px; border-radius: 15px;
+            margin-bottom: 10px; display: flex; flex-direction: column;
+        }
+
+        .detail-item span { color: #888; font-size: 11px; margin-bottom: 2px; }
+        .detail-item b { font-size: 15px; color: #333; }
+
+        h3 { margin: 25px 0 15px 5px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+        
+        .order-card {
+            background: var(--white); border-radius: 15px; padding: 15px;
+            margin-bottom: 10px; border-left: 5px solid var(--primary);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+        }
+
+        /* NAVBAR STILI */
+        .navbar {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: var(--white); height: 70px;
+            display: flex; justify-content: space-around; align-items: center;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.05);
+            border-radius: 20px 20px 0 0; z-index: 1000;
+        }
+
+        .nav-item { display: flex; flex-direction: column; align-items: center; text-decoration: none; color: #b2bec3; font-size: 12px; font-weight: 600; }
+        .nav-item.active { color: var(--primary); }
+        .nav-icon { font-size: 20px; margin-bottom: 2px; }
+
+        .nav-cart {
+            background: var(--primary); width: 60px; height: 60px;
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            color: white; font-size: 24px; margin-top: -35px;
+            box-shadow: 0 8px 20px rgba(46, 204, 113, 0.3); position: relative;
+        }
+
+        .badge {
+            position: absolute; top: 0; right: 0;
+            background: #ff4757; color: white; font-size: 10px;
+            padding: 3px 7px; border-radius: 10px; border: 2px solid var(--white);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-nav">
+        <button class="btn-close" onclick="goBack()">✕ Yopish</button>
+    </div>
+
+    <div class="profile-card">
+        <div class="avatar" id="avatarLetter">?</div>
+        <h2 id="displayFullName" style="margin: 0; font-size: 20px;">Yuklanmoqda...</h2>
+
+        <div class="user-details">
+            <div class="detail-item">
+                <span>Telefon raqam</span>
+                <b id="displayPhone">-- --- -- --</b>
+            </div>
+            <div class="detail-item">
+                <span>Dastur tili</span>
+                <b id="displayLang">O'zbekcha</b>
+            </div>
+            <div class="detail-item">
+                <span>Telegram ID</span>
+                <b id="displayId">---------</b>
+            </div>
+        </div>
+    </div>
+
+    <h3>📦 Oxirgi buyurtmalar</h3>
+    <div id="ordersHistory">
+        <p style="text-align:center; color:#999; font-size: 14px;">Yuklanmoqda...</p>
+    </div>
+
+    <nav class="navbar">
+        <a href="index.html" class="nav-item">
+            <span class="nav-icon">🏠</span>
+            <span>Asosiy</span>
+        </a>
+        
+        <a href="cart.html" class="nav-item">
+            <div class="nav-cart">
+                🛒
+                <span class="badge" id="cart-count">0</span>
+            </div>
+        </a>
+
+        <a href="profile.html" class="nav-item active">
+            <span class="nav-icon">👤</span>
+            <span>Profil</span>
+        </a>
+    </nav>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        tg.BackButton.show();
+        tg.onEvent('backButtonClicked', goBack);
+
+        function goBack() {
+            window.location.href = 'index.html';
+        }
+
+        // Savatchadagi raqamni yangilash
+        function updateBadge() {
+            let cart = JSON.parse(localStorage.getItem('cart')) || {};
+            let count = Object.values(cart).reduce((a, b) => a + b, 0);
+            const badge = document.getElementById('cart-count');
+            badge.innerText = count;
+            badge.style.display = count > 0 ? 'block' : 'none';
+        }
+
+        const API_BASE_URL = "https://sizning-api-manzilingiz.uz"; 
+
+        async function loadUserData() {
+            updateBadge(); // Badge'ni yuklash
+            const user = tg.initDataUnsafe?.user;
+            if (!user) return;
+
+            // Telegram WebApp orqali ism-familiyani chiqarish (API ishlamasa ham ko'rinishi uchun)
+            document.getElementById('displayFullName').innerText = (user.first_name || "") + " " + (user.last_name || "");
+            document.getElementById('displayId').innerText = user.id;
+            document.getElementById('avatarLetter').innerText = user.first_name ? user.first_name.charAt(0) : "?";
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/user/${user.id}`);
+                const userData = await response.json();
+
+                if (userData) {
+                    document.getElementById('displayFullName').innerText = userData.fullName;
+                    document.getElementById('displayPhone').innerText = userData.phone || "Kiritilmagan";
+                    document.getElementById('displayLang').innerText = 
+                        userData.lang === 'uz' ? "O'zbekcha" : 
+                        userData.lang === 'ru' ? "Русский" : "O'zbekcha";
+                    document.getElementById('avatarLetter').innerText = userData.fullName.charAt(0);
+                }
+
+                const ordersRes = await fetch(`${API_BASE_URL}/api/orders/${user.id}`);
+                const orders = await ordersRes.json();
+                const container = document.getElementById('ordersHistory');
+                
+                if (!orders || orders.length === 0) {
+                    container.innerHTML = "<p style='text-align:center; color:#999;'>Buyurtmalar mavjud emas</p>";
+                } else {
+                    container.innerHTML = orders.map(o => `
+                        <div class="order-card">
+                            <div style="font-size: 11px; color: #999; margin-bottom: 5px;">${o.date}</div>
+                            <b style="font-size: 14px;">${o.items}</b><br>
+                            <span style="color: var(--primary); font-weight: bold; font-size: 14px;">${o.total.toLocaleString()} so'm</span>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error("Xato:", error);
+                // Xatolik bo'lsa ham buyurtmalar qismini tozalaymiz
+                document.getElementById('ordersHistory').innerHTML = "<p style='text-align:center; color:#999;'>Ma'lumotlarni yuklab bo'lmadi</p>";
+            }
+        }
+
+        loadUserData();
+    </script>
+</body>
+</html>
