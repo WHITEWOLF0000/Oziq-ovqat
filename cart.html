@@ -193,6 +193,7 @@
             document.getElementById('order-modal').style.display = 'none';
         };
 
+        // --- HA TO'LASH TUGMASI ---
         document.getElementById('confirm-yes').onclick = function() {
             const currentCart = JSON.parse(localStorage.getItem('cart')) || {};
             let orderSummary = [];
@@ -206,15 +207,27 @@
                 }
             }
             
-            // BOTGA TO'LOV UCHUN MA'LUMOT YUBORISH
+            // Xavfsizlik: Bo'sh savatchani yubormaslik
+            if (orderSummary.length === 0) {
+                alert("Savatcha bo'sh!");
+                return;
+            }
+
+            // BOTGA TO'LOV SIGNALINI YUBORISH
+            // Bu ma'lumot bot.js dagi bot.on("message:web_app_data") qismiga boradi
             tg.sendData(JSON.stringify({
                 action: "payment_request",
                 items: orderSummary.join(", "),
                 total_price: total
             }));
             
+            // Savatchani tozalash va ilovani yopish
             localStorage.removeItem('cart');
             document.getElementById('order-modal').style.display = 'none';
+            
+            // Haptic Feedback (vibratsiya)
+            if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+            
             tg.close();
         };
 
