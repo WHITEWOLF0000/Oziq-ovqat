@@ -9,7 +9,7 @@
         :root {
             --primary: #2ecc71;
             --bg: #f8f9fa;
-            --white: #ffffff;
+            --white: #white;
             --text: #2d3436;
         }
 
@@ -17,10 +17,10 @@
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 15px; padding-bottom: 100px; color: var(--text); }
 
         .header { display: flex; align-items: center; gap: 15px; margin-bottom: 20px; }
-        .back-btn { background: var(--white); border: none; width: 40px; height: 40px; border-radius: 50%; font-size: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); cursor: pointer; }
+        .back-btn { background: white; border: none; width: 40px; height: 40px; border-radius: 50%; font-size: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); cursor: pointer; }
 
         .cart-item {
-            background: var(--white);
+            background: white;
             padding: 12px;
             border-radius: 20px;
             margin-bottom: 12px;
@@ -36,24 +36,17 @@
         .item-info span { color: var(--primary); font-weight: 800; font-size: 13px; }
 
         .counter { display: flex; align-items: center; gap: 10px; background: #f1f2f6; padding: 4px; border-radius: 10px; }
-        .count-btn { background: var(--white); border: none; width: 28px; height: 28px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .count-btn { background: white; border: none; width: 28px; height: 28px; border-radius: 6px; font-weight: bold; cursor: pointer; }
         
         .empty-cart { text-align: center; margin-top: 50px; color: #999; }
-        .cart-summary { background: var(--white); padding: 20px; border-radius: 20px; margin-top: 20px; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); }
+        .cart-summary { background: white; padding: 20px; border-radius: 20px; margin-top: 20px; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); }
 
-        /* MODAL OYNASI STILI */
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px; }
-        .modal-content { background: white; padding: 25px; border-radius: 25px; width: 100%; max-width: 400px; text-align: center; }
-        .payment-btn { width: 100%; padding: 15px; margin: 10px 0; border: none; border-radius: 15px; font-weight: bold; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
-        .btn-click { background: #005aff; color: white; }
-        .btn-cash { background: #f1f2f6; color: #2d3436; }
-
-        .navbar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--white); height: 70px; display: flex; justify-content: space-around; align-items: center; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); border-radius: 20px 20px 0 0; z-index: 1000; }
+        .navbar { position: fixed; bottom: 0; left: 0; right: 0; background: white; height: 70px; display: flex; justify-content: space-around; align-items: center; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); border-radius: 20px 20px 0 0; z-index: 1000; }
         .nav-item { display: flex; flex-direction: column; align-items: center; text-decoration: none; color: #b2bec3; font-size: 12px; font-weight: 600; }
         .nav-item.active { color: var(--primary); }
         .nav-icon { font-size: 20px; margin-bottom: 2px; }
         .nav-cart { background: var(--primary); width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; margin-top: -35px; box-shadow: 0 8px 20px rgba(46, 204, 113, 0.3); position: relative; }
-        .badge { position: absolute; top: 0; right: 0; background: #ff4757; color: white; font-size: 10px; padding: 3px 7px; border-radius: 10px; border: 2px solid var(--white); }
+        .badge { position: absolute; top: 0; right: 0; background: #ff4757; color: white; font-size: 10px; padding: 3px 7px; border-radius: 10px; border: 2px solid white; }
     </style>
 </head>
 <body>
@@ -176,41 +169,35 @@
             }
         }
 
-        // --- MODAL BOSHQARUVI ---
+        // --- BUYURTMA BERISH TUGMASI ---
         document.getElementById('order-btn').onclick = function() {
-            document.getElementById('payment-modal').style.display = 'flex';
+            const currentCart = JSON.parse(localStorage.getItem('cart')) || {};
+            let orderSummary = [];
+            let total = 0;
+
+            for (let id in currentCart) {
+                const food = foods.find(f => f.id == parseInt(id));
+                if (food) {
+                    orderSummary.push(`${food.name} (${currentCart[id]}x)`);
+                    total += food.price * currentCart[id];
+                }
+            }
+
+            if (orderSummary.length === 0) return;
+
+            // Botga ma'lumot yuborish
+            const dataToSend = {
+                action: "new_order",
+                items: orderSummary.join(", "),
+                total_price: total
+            };
+
+            tg.sendData(JSON.stringify(dataToSend));
+            
+            // Savatni tozalash va yopish
+            localStorage.removeItem('cart');
+            tg.close();
         };
-
-        function closeModal() {
-            document.getElementById('payment-modal').style.display = 'none';
-        }
-
-        // --- BUYURTMANI BOTGA YUBORISH ---
-document.getElementById('order-btn').onclick = function() {
-    const currentCart = JSON.parse(localStorage.getItem('cart')) || {};
-    let orderSummary = [];
-    let total = 0;
-
-    for (let id in currentCart) {
-        const food = foods.find(f => f.id == parseInt(id));
-        if (food) {
-            orderSummary.push(`${food.name} (${currentCart[id]}x)`);
-            total += food.price * currentCart[id];
-        }
-    }
-
-    if (orderSummary.length === 0) return;
-
-    const dataToSend = {
-        action: "initiate_order", // Shunchaki buyurtmani boshlash
-        items: orderSummary.join(", "),
-        total_price: total
-    };
-
-    tg.sendData(JSON.stringify(dataToSend));
-    localStorage.removeItem('cart');
-    tg.close();
-};
 
         window.onload = renderCart;
     </script>
