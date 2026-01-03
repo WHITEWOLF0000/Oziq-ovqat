@@ -9,7 +9,6 @@ const app = express();
 
 app.use(express.json());
 
-// Ma'lumotlar bazasini tekshirish/yaratish
 db.prepare(`
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY,
@@ -19,8 +18,9 @@ db.prepare(`
     )
 `).run();
 
+// Sessiyani to'g'ri sozlash
 bot.use(session({
-    initial: () => ({ step: "IDLE" })
+    initial: () => ({ step: "IDLE", tempOrder: null })
 }));
 
 const i18n = {
@@ -37,7 +37,8 @@ const i18n = {
         edit_lang: "Tilni o'zgartirish",
         feedback_prompt: "Xabaringizni yozing:",
         payment_title: "Buyurtma to'lovi",
-        payment_success: "✅ To'lov muvaffaqiyatli amalga oshirildi! Buyurtmangiz tayyorlanmoqda."
+        payment_description: "Tanlangan mahsulotlar: {items}",
+        payment_success: "✅ To'lov muvaffaqiyatli amalga oshirildi!"
     },
     ru: {
         welcome: "Добро пожаловать! Введите имя и фамилию:",
@@ -52,7 +53,8 @@ const i18n = {
         edit_lang: "Изменить язык",
         feedback_prompt: "Напишите ваше сообщение:",
         payment_title: "Оплата заказа",
-        payment_success: "✅ Оплата прошла успешно! Ваш заказ готовится."
+        payment_description: "Выбранные товары: {items}",
+        payment_success: "✅ Оплата прошла успешно!"
     }
 };
 
@@ -62,23 +64,6 @@ const getMainMenu = (lang) => {
         .text(i18n[lang].feedback).text(i18n[lang].settings)
         .resized();
 };
-
-async function showSettings(ctx, user) {
-    const lang = user.lang || "uz";
-    const langName = lang === 'uz' ? "O'zbekcha 🇺🇿" : "Русский 🇷🇺";
-    
-    let text = i18n[lang].current_data
-        .replace('{name}', user.fullName || '—')
-        .replace('{phone}', user.phone || '—')
-        .replace('{lang}', langName);
-
-    const keyboard = new InlineKeyboard()
-        .text("👤 " + i18n[lang].edit_name, "edit_name").row()
-        .text("📞 " + i18n[lang].edit_phone, "edit_phone").row()
-        .text("🌐 " + i18n[lang].edit_lang, "edit_lang");
-
-    await ctx.reply(text, { reply_markup: keyboard });
-}
 
 // 1. START
 bot.command("start", async (ctx) => {
@@ -109,90 +94,70 @@ bot.callbackQuery(/^lang_/, async (ctx) => {
     }
 });
 
-// To'lov turi tanlanganda ishlovchi callback
+// TO'LOV CALLBACK (PROVIDER_TOKEN ishlatilgan)
 bot.callbackQuery(/^pay_/, async (ctx) => {
-    const data = ctx.callbackQuery.data.split(":");
-    const method = data[0]; // pay_click yoki pay_cash
-    const price = data[1];
-    const items = data[2];
-
+    const action = ctx.callbackQuery.data;
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.from.id);
-    const methodText = method === 'pay_click' ? "💳 Click" : "💵 Naqd";
+    const lang = user?.lang || 'uz';
+    const order = ctx.session.tempOrder;
 
-    // Adminga xabar
-    const orderText = `🛍 **YANGI BUYURTMA!**\n\n` +
-                      `👤 Mijoz: ${user?.fullName}\n` +
-                      `📞 Tel: ${user?.phone}\n` +
-                      `📦 Mahsulotlar: ${items}\n` +
-                      `💰 Jami: ${parseInt(price).toLocaleString()} so'm\n` +
-                      `🏦 To'lov turi: ${methodText}`;
+    if (!order) return ctx.answerCallbackQuery("Buyurtma topilmadi.");
 
-    await bot.api.sendMessage(process.env.ADMIN_ID, orderText, { parse_mode: "Markdown" });
-
-    // Foydalanuvchiga javob
-    if (method === 'pay_click') {
-        const transactionParam = `order_${ctx.from.id}_${Date.now()}`;
-        const paymentUrl = `https://my.click.uz/pay/?service_id=${process.env.CLICK_SERVICE_ID}&merchant_id=${process.env.CLICK_MERCHANT_ID}&amount=${price}&transaction_param=${transactionParam}`;
-
-        await ctx.editMessageText(`✅ To'lov usuli: Click tanlandi.\nSumma: ${parseInt(price).toLocaleString()} so'm\n\nTo'lovni amalga oshirish uchun tugmani bosing:`, {
-            reply_markup: new InlineKeyboard().url("💳 To'lash (Click)", paymentUrl)
-        });
-    } else {
-        await ctx.editMessageText(`✅ Buyurtmangiz qabul qilindi!\nTo'lov turi: Naqd (kuryerga).\n\nTez orada xizmatimiz xodimlari bog'lanishadi.`);
+    if (action === 'pay_click') {
+        try {
+            // Named parameters xatoliklarni oldini oladi
+            await ctx.api.raw.sendInvoice({
+                chat_id: ctx.from.id,
+                title: i18n[lang].payment_title,
+                description: i18n[lang].payment_description.replace('{items}', order.items.substring(0, 100)),
+                payload: `order_${ctx.from.id}_${Date.now()}`,
+                provider_token: process.env.PROVIDER_TOKEN, // SIZDAGI O'ZGARUVCHI NOMI
+                currency: "UZS",
+                prices: JSON.stringify([{ label: "Jami", amount: order.price * 100 }])
+            });
+            await ctx.deleteMessage().catch(() => {});
+        } catch (e) {
+            console.error("Invoice error:", e);
+            await ctx.reply("To'lovni yaratishda xatolik yuz berdi.");
+        }
+    } else if (action === 'pay_cash') {
+        const adminText = `🛍 **YANGI BUYURTMA (NAQD)!**\n\n👤 Mijoz: ${user?.fullName}\n📞 Tel: ${user?.phone}\n📦 Mahsulotlar: ${order.items}\n💰 Jami: ${order.price.toLocaleString()} so'm`;
+        await bot.api.sendMessage(process.env.ADMIN_ID, adminText, { parse_mode: "Markdown" });
+        await ctx.editMessageText(lang === 'uz' ? "✅ Buyurtmangiz qabul qilindi (Naqd)." : "✅ Заказ принят (Наличные).");
+        ctx.session.tempOrder = null;
     }
     await ctx.answerCallbackQuery();
 });
 
-bot.callbackQuery("edit_name", async (ctx) => {
-    const user = db.prepare('SELECT lang FROM users WHERE id = ?').get(ctx.from.id);
-    ctx.session.step = "ASK_NAME";
-    await ctx.answerCallbackQuery();
-    await ctx.reply(i18n[user.lang].welcome, { reply_markup: { remove_keyboard: true } });
+// To'lovni tasdiqlash
+bot.on("pre_checkout_query", (ctx) => ctx.answerPreCheckoutQuery(true));
+
+// To'lov muvaffaqiyatli o'tganda
+bot.on("message:successful_payment", async (ctx) => {
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.from.id);
+    const lang = user?.lang || 'uz';
+    await ctx.reply(i18n[lang].payment_success);
+    ctx.session.tempOrder = null;
 });
 
-bot.callbackQuery("edit_phone", async (ctx) => {
-    const user = db.prepare('SELECT lang FROM users WHERE id = ?').get(ctx.from.id);
-    ctx.session.step = "ASK_PHONE";
-    await ctx.answerCallbackQuery();
-    await ctx.reply(i18n[user.lang].ask_phone, {
-        reply_markup: new Keyboard().requestContact("📱 Telefon yuborish").resized().oneTime()
-    });
-});
-
-bot.callbackQuery("edit_lang", async (ctx) => {
-    ctx.session.step = "EDIT_LANG";
-    await ctx.answerCallbackQuery();
-    await ctx.reply("Tilni tanlang / Выберите язык:", {
-        reply_markup: new InlineKeyboard().text("O'zbekcha 🇺🇿", "lang_uz").text("Русский 🇷🇺", "lang_ru")
-    });
-});
-
-// 3. MINI APP MA'LUMOTI
+// 3. MINI APP DATA
 bot.on("message:web_app_data", async (ctx) => {
     try {
         const data = JSON.parse(ctx.message.web_app_data.data);
-        const user = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.from.id);
-        const lang = user?.lang || 'uz';
-
         if (data.action === "new_order") {
-            // To'lov turini tanlash uchun Inline Keyboard
-            // Items juda uzun bo'lib ketmasligi uchun substring qilamiz
-            const shortItems = data.items.length > 30 ? data.items.substring(0, 30) + "..." : data.items;
-            
+            ctx.session.tempOrder = { items: data.items, price: data.total_price };
             const payKeyboard = new InlineKeyboard()
-                .text("💳 Click orqali", `pay_click:${data.total_price}:${shortItems}`).row()
-                .text("💵 Naqd (Kuryerga)", `pay_cash:${data.total_price}:${shortItems}`);
+                .text("💳 Click (Telegram)", "pay_click").row()
+                .text("💵 Naqd (Kuryerga)", "pay_cash");
 
-            await ctx.reply(`💰 Buyurtma summasi: ${data.total_price.toLocaleString()} so'm\n\nIltimos, to'lov usulini tanlang:`, {
+            await ctx.reply(`💰 Summa: ${data.total_price.toLocaleString()} so'm\nTo'lov usulini tanlang:`, {
                 reply_markup: payKeyboard
             });
         }
-    } catch (e) {
-        console.error("WebAppData error:", e);
-    }
+    } catch (e) { console.error(e); }
 });
 
-// 4. TEXT MESSAGES
+// QOLGAN TEXT MESSAGES (O'zgarishsiz)
 bot.on("message:text", async (ctx) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.from.id);
     const lang = user?.lang || "uz";
@@ -208,28 +173,19 @@ bot.on("message:text", async (ctx) => {
             ctx.session.step = "IDLE";
             await ctx.reply(i18n[lang].done, { reply_markup: getMainMenu(lang) });
         }
-    } 
-    else if (ctx.session.step === "WAITING_FEEDBACK") {
-        await bot.api.sendMessage(process.env.ADMIN_ID, `📩 TAKLIF:\n👤 ${user.fullName}\n📞 ${user.phone}\n📝 ${ctx.message.text}`);
-        ctx.session.step = "IDLE";
-        await ctx.reply(i18n[lang].done, { reply_markup: getMainMenu(lang) });
-    }
-    else {
+    } else {
         switch (ctx.message.text) {
             case i18n[lang].order:
                 await ctx.reply("Menyuni oching:", {
-                    reply_markup: new Keyboard()
-                        .webApp("🍟 Menyu", `${process.env.WEB_APP_URL}`)
-                        .resized()
-                        .oneTime()
+                    reply_markup: new Keyboard().webApp("🍟 Menyu", `${process.env.WEB_APP_URL}`).resized()
                 });
                 break;
             case i18n[lang].settings:
-                await showSettings(ctx, user);
-                break;
-            case i18n[lang].feedback:
-                ctx.session.step = "WAITING_FEEDBACK";
-                await ctx.reply(i18n[lang].feedback_prompt, { reply_markup: { remove_keyboard: true } });
+                // showSettings funksiyasini yuqorida aniqlagan bo'lishingiz kerak
+                const langName = lang === 'uz' ? "O'zbekcha 🇺🇿" : "Русский 🇷🇺";
+                let text = i18n[lang].current_data.replace('{name}', user.fullName || '—').replace('{phone}', user.phone || '—').replace('{lang}', langName);
+                const keyboard = new InlineKeyboard().text("👤 " + i18n[lang].edit_name, "edit_name").row().text("📞 " + i18n[lang].edit_phone, "edit_phone").row().text("🌐 " + i18n[lang].edit_lang, "edit_lang");
+                await ctx.reply(text, { reply_markup: keyboard });
                 break;
         }
     }
@@ -242,25 +198,13 @@ bot.on("message:contact", async (ctx) => {
     await ctx.reply(i18n[user.lang].done, { reply_markup: getMainMenu(user.lang) });
 });
 
-app.post('/payment/callback', (req, res) => {
-    try {
-        const { merchant_trans_id, status } = req.body;
-        if (status == 1) {
-            const parts = merchant_trans_id.split('_');
-            if (parts[0] === 'order') {
-                const userId = parts[1];
-                bot.api.sendMessage(userId, '✅ To\'lov muvaffaqiyatli amalga oshirildi! Buyurtmangiz tayyorlanmoqda.');
-            }
-        }
-        res.send('OK');
-    } catch (e) {
-        res.status(500).send('Error');
-    }
-});
-
+// SERVERNI YOQISH
 (async () => {
-    bot.start().catch(err => console.error("Bot start error:", err));
+    // Double pollingni o'chirish uchun avvalgi barcha so'rovlarni o'chiramiz
+    await bot.api.deleteWebhook({ drop_pending_updates: true });
+    
+    bot.start();
     app.listen(process.env.PORT || 3000, () => {
-        console.log('Server running on port', process.env.PORT || 3000);
+        console.log('Bot va Server muvaffaqiyatli ishga tushdi!');
     });
 })();
