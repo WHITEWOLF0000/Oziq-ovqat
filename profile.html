@@ -6,24 +6,80 @@
     <title>Mening Profilim</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        :root { --primary: #2ecc71; --bg: #f4f4f7; --white: #ffffff; --text: #2d3436; --danger: #ff4757; }
+        :root {
+            --primary: #2ecc71;
+            --bg: #f4f4f7;
+            --white: #ffffff;
+            --text: #2d3436;
+            --danger: #ff4757;
+        }
+
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 15px; padding-bottom: 100px; color: var(--text); }
+        
         .header-nav { display: flex; justify-content: flex-start; margin-bottom: 15px; }
-        .btn-close { background: var(--white); color: var(--danger); border: none; padding: 8px 16px; border-radius: 12px; font-weight: bold; cursor: pointer; }
-        .profile-card { background: var(--white); border-radius: 25px; padding: 25px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-        .avatar { width: 70px; height: 70px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 30px; margin: 0 auto 15px; }
+
+        .btn-close {
+            background: var(--white); color: var(--danger); border: none;
+            padding: 8px 16px; border-radius: 12px; font-weight: bold;
+            font-size: 14px; display: flex; align-items: center; gap: 5px;
+            cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .profile-card {
+            background: var(--white); border-radius: 25px; padding: 25px;
+            text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.05); margin-bottom: 20px;
+        }
+
+        .avatar {
+            width: 70px; height: 70px; background: var(--primary);
+            color: white; border-radius: 50%; display: flex;
+            align-items: center; justify-content: center;
+            font-size: 30px; font-weight: bold; margin: 0 auto 15px;
+        }
+
         .user-details { text-align: left; margin-top: 20px; }
-        .detail-item { background: #f9f9fb; padding: 12px 15px; border-radius: 15px; margin-bottom: 10px; display: flex; flex-direction: column; }
-        .detail-item span { color: #888; font-size: 11px; }
-        .detail-item b { font-size: 15px; }
-        h3 { margin: 25px 0 15px 5px; font-size: 16px; }
-        .order-card { background: var(--white); border-radius: 15px; padding: 15px; margin-bottom: 10px; border-left: 5px solid var(--primary); box-shadow: 0 4px 10px rgba(0,0,0,0.02); }
-        .navbar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--white); height: 70px; display: flex; justify-content: space-around; align-items: center; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); border-radius: 20px 20px 0 0; }
-        .nav-item { display: flex; flex-direction: column; align-items: center; text-decoration: none; color: #b2bec3; font-size: 12px; }
+        .detail-item {
+            background: #f9f9fb; padding: 12px 15px; border-radius: 15px;
+            margin-bottom: 10px; display: flex; flex-direction: column;
+        }
+
+        .detail-item span { color: #888; font-size: 11px; margin-bottom: 2px; }
+        .detail-item b { font-size: 15px; color: #333; }
+
+        h3 { margin: 25px 0 15px 5px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+        
+        .order-card {
+            background: var(--white); border-radius: 15px; padding: 15px;
+            margin-bottom: 10px; border-left: 5px solid var(--primary);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+        }
+
+        .navbar {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: var(--white); height: 70px;
+            display: flex; justify-content: space-around; align-items: center;
+            box-shadow: 0 -5px 20px rgba(0,0,0,0.05);
+            border-radius: 20px 20px 0 0; z-index: 1000;
+        }
+
+        .nav-item { display: flex; flex-direction: column; align-items: center; text-decoration: none; color: #b2bec3; font-size: 12px; font-weight: 600; }
         .nav-item.active { color: var(--primary); }
-        .nav-cart { background: var(--primary); width: 55px; height: 55px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; margin-top: -30px; position: relative; }
-        .badge { position: absolute; top: 0; right: 0; background: #ff4757; color: white; font-size: 10px; padding: 3px 7px; border-radius: 10px; border: 2px solid white; display: none; }
+        .nav-icon { font-size: 20px; margin-bottom: 2px; }
+
+        .nav-cart {
+            background: var(--primary); width: 60px; height: 60px;
+            border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            color: white; font-size: 24px; margin-top: -35px;
+            box-shadow: 0 8px 20px rgba(46, 204, 113, 0.3); position: relative;
+        }
+
+        .badge {
+            position: absolute; top: 0; right: 0;
+            background: #ff4757; color: white; font-size: 10px;
+            padding: 3px 7px; border-radius: 10px; border: 2px solid var(--white);
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -34,60 +90,86 @@
 
     <div class="profile-card">
         <div class="avatar" id="avatarLetter">?</div>
-        <h2 id="displayFullName" style="margin: 0; font-size: 20px;">Foydalanuvchi</h2>
+        <h2 id="displayFullName" style="margin: 0; font-size: 20px;">Yuklanmoqda...</h2>
+
         <div class="user-details">
-            <div class="detail-item"><span>Telegram ID</span><b id="displayId">---</b></div>
-            <div class="detail-item"><span>Dastur tili</span><b id="displayLang">O'zbekcha</b></div>
+            <div class="detail-item">
+                <span>Dastur tili</span>
+                <b id="displayLang">O'zbekcha</b>
+            </div>
+            <div class="detail-item">
+                <span>Telegram ID</span>
+                <b id="displayId">---------</b>
+            </div>
         </div>
     </div>
 
     <h3>📦 Oxirgi buyurtmalar</h3>
     <div id="ordersHistory">
-        <p style="text-align:center; color:#999;">Yuklanmoqda...</p>
+        <p style="text-align:center; color:#999; font-size: 14px;">Yuklanmoqda...</p>
     </div>
 
     <nav class="navbar">
-        <a href="index.html" class="nav-item"><span>🏠</span><span>Asosiy</span></a>
-        <a href="cart.html" class="nav-item">
-            <div class="nav-cart">🛒<span class="badge" id="cart-count">0</span></div>
+        <a href="index.html" class="nav-item">
+            <span class="nav-icon">🏠</span>
+            <span>Asosiy</span>
         </a>
-        <a href="profile.html" class="nav-item active"><span>👤</span><span>Profil</span></a>
+        
+        <a href="cart.html" class="nav-item">
+            <div class="nav-cart">
+                🛒
+                <span class="badge" id="cart-count">0</span>
+            </div>
+        </a>
+
+        <a href="profile.html" class="nav-item active">
+            <span class="nav-icon">👤</span>
+            <span>Profil</span>
+        </a>
     </nav>
 
     <script>
-        const tg = window.Telegram.WebApp;
+        let tg = window.Telegram.WebApp;
         tg.expand();
+        
+        // BackButton mantiqi
+        tg.BackButton.show();
+        tg.onEvent('backButtonClicked', () => {
+            window.location.href = 'index.html';
+        });
 
-        // ⚠️ MUHIM: Bu yerga botingiz ishlayotgan real URL manzilni yozing (masalan: https://avigobot.up.railway.app)
-        // Agar bir xil serverda bo'lsa, shunchaki bo'sh qoldiring yoki window.location.origin ishlating
-        const API_BASE_URL = window.location.origin; 
-
+        // Savatcha badge'ini yangilash
         function updateBadge() {
-            const cart = JSON.parse(localStorage.getItem('cart')) || {};
-            const count = Object.values(cart).reduce((a, b) => a + b, 0);
+            let cart = JSON.parse(localStorage.getItem('cart')) || {};
+            let count = Object.values(cart).reduce((a, b) => a + b, 0);
             const badge = document.getElementById('cart-count');
-            if(count > 0) { badge.innerText = count; badge.style.display = 'block'; }
+            badge.innerText = count;
+            badge.style.display = count > 0 ? 'block' : 'none';
         }
 
-        async function loadProfile() {
+        // API manzilingiz (Buni o'zgartirmang, window.location.origin avtomatik topadi)
+        const API_BASE_URL = window.location.origin; 
+
+        async function loadProfileData() {
             updateBadge();
             const user = tg.initDataUnsafe?.user;
             if (!user) {
-                document.getElementById('ordersHistory').innerHTML = "Telegram ma'lumotlari topilmadi.";
+                document.getElementById('displayFullName').innerText = "Noma'lum foydalanuvchi";
                 return;
             }
 
+            // Telegram'dan kelgan ma'lumotlarni chiqarish
+            const fullName = (user.first_name || "") + " " + (user.last_name || "");
+            document.getElementById('displayFullName').innerText = fullName;
             document.getElementById('displayId').innerText = user.id;
-            document.getElementById('displayFullName').innerText = user.first_name + (user.last_name ? " " + user.last_name : "");
-            document.getElementById('avatarLetter').innerText = user.first_name.charAt(0);
+            document.getElementById('avatarLetter').innerText = user.first_name ? user.first_name.charAt(0) : "?";
+            document.getElementById('displayLang').innerText = user.language_code === 'ru' ? "Русский" : "O'zbekcha";
 
             try {
-                // API ga so'rov yuborish
+                // Buyurtmalar tarixini API dan olish
                 const response = await fetch(`${API_BASE_URL}/api/orders/${user.id}`);
-                
-                if (!response.ok) throw new Error('Tarmoq xatosi');
-                
                 const data = await response.json();
+
                 const container = document.getElementById('ordersHistory');
                 
                 if (data.success && data.orders.length > 0) {
@@ -95,22 +177,22 @@
                         <div class="order-card">
                             <div style="font-size: 11px; color: #999; margin-bottom: 5px;">📅 ${new Date(o.date).toLocaleString('uz-UZ')}</div>
                             <b style="font-size: 14px; display: block; margin-bottom: 5px;">${o.items}</b>
-                            <div style="display: flex; justify-content: space-between;">
-                                <span style="color: var(--primary); font-weight: bold;">${Number(o.amount).toLocaleString()} so'm</span>
-                                <span style="font-size: 12px; color: #888;">${o.method}</span>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="color: var(--primary); font-weight: bold; font-size: 14px;">${Number(o.amount).toLocaleString()} so'm</span>
+                                <span style="font-size: 11px; background: #eee; padding: 2px 8px; border-radius: 10px; color: #666;">${o.method}</span>
                             </div>
                         </div>
                     `).join('');
                 } else {
-                    container.innerHTML = "<p style='text-align:center; color:#999;'>Buyurtmalar topilmadi.</p>";
+                    container.innerHTML = "<p style='text-align:center; color:#999; margin-top: 20px;'>Buyurtmalar mavjud emas</p>";
                 }
             } catch (error) {
-                console.error("Fetch Error:", error);
-                document.getElementById('ordersHistory').innerHTML = `<p style='text-align:center; color:red;'>Ulanishda xatolik yuz berdi. <br> <small>${error.message}</small></p>`;
+                console.error("Xato:", error);
+                document.getElementById('ordersHistory').innerHTML = "<p style='text-align:center; color:#ff4757; font-size: 12px;'>Ma'lumotlarni yuklab bo'lmadi</p>";
             }
         }
 
-        loadProfile();
+        loadProfileData();
     </script>
 </body>
 </html>
