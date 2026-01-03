@@ -2,48 +2,42 @@ require('dotenv').config();
 const { Bot, InlineKeyboard, Keyboard, session } = require("grammy");
 const Database = require('better-sqlite3');
 const express = require('express');
-const cors = require('cors');
 
 const db = new Database('avigo.db');
 const bot = new Bot(process.env.BOT_TOKEN);
 const app = express();
 
 app.use(express.json());
-app.use(cors());
 
 // --- 1. JADVALLARNI SOZLASH ---
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY,
-    fullName TEXT,
-    phone TEXT,
-    lang TEXT DEFAULT 'uz'
-  );
-  CREATE TABLE IF NOT EXISTS orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    items TEXT,
-    amount REAL,
-    method TEXT,
-    date TEXT
-  );
-`);
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY,
+        fullName TEXT,
+        phone TEXT,
+        lang TEXT DEFAULT 'uz'
+    )
+`).run();
 
-// Ustunlarni tekshirish (faqat kerak bo'lsa)
-try { db.exec("ALTER TABLE orders ADD COLUMN amount REAL"); } catch (e) {}
-try { db.exec("ALTER TABLE orders ADD COLUMN method TEXT"); } catch (e) {}
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        items TEXT,
+        amount REAL,
+        method TEXT,
+        date TEXT
+    )
+`).run();
 
-// --- 2. API ENDPOINTLAR ---
-app.get('/api/orders/:user_id', (req, res) => {
+// AGAR ESKI BAZA BO'LSA, USTUNLARNI TEKSHIRIB QO'SHISH
+const columns = ['amount', 'method'];
+columns.forEach(col => {
     try {
-        const orders = db.prepare("SELECT items, amount, method, date FROM orders WHERE user_id = ? ORDER BY id DESC LIMIT 10").all(req.params.user_id);
-        res.json({ success: true, orders });
-    } catch (e) {
-        res.status(500).json({ success: false, error: e.message });
-    }
+        db.prepare(`ALTER TABLE orders ADD COLUMN ${col} TEXT`).run();
+    } catch (e) {}
 });
 
-// --- 3. BOT SOZLAMALARI ---
 bot.use(session({
     initial: () => ({ step: "IDLE", tempOrder: null })
 }));
@@ -79,33 +73,41 @@ const i18n = {
     }
 };
 
-// Xabarnoma yuborish funksiyasi
+// --- 2. YORDAMCHI FUNKSIYALAR ---
+
 async function sendOrderNotifications(user, order, methodText) {
-    const amount = Number(order.price || order.total_price);
     const commonText = `📦 **YANGI BUYURTMA!**\n\n` +
                        `👤 Mijoz: ${user.fullName || "Noma'lum"}\n` +
                        `📞 Tel: ${user.phone || "Noma'lum"}\n` +
                        `🍔 Mahsulotlar: ${order.items}\n` +
-                       `💰 Jami: ${amount.toLocaleString()} so'm\n` +
+                       `💰 Jami: ${Number(order.price).toLocaleString()} so'm\n` +
                        `🏦 To'lov turi: ${methodText}\n` +
                        `⏰ Vaqt: ${new Date().toLocaleString('uz-UZ')}`;
 
     try {
         db.prepare('INSERT INTO orders (user_id, items, amount, method, date) VALUES (?, ?, ?, ?, ?)')
-          .run(user.id, order.items, amount, methodText, new Date().toISOString());
+          .run(user.id, order.items, order.price, methodText, new Date().toISOString());
 
-        if (process.env.ADMIN_ID) await bot.api.sendMessage(process.env.ADMIN_ID, `🏦 **ADMIN:**\n${commonText}`, { parse_mode: "Markdown" });
-        if (process.env.KITCHEN_CHANNEL_ID) await bot.api.sendMessage(process.env.KITCHEN_CHANNEL_ID, `👨‍🍳 **OSHPAZLAR:**\n${commonText}`, { parse_mode: "Markdown" });
+        if (process.env.ADMIN_ID) {
+            await bot.api.sendMessage(process.env.ADMIN_ID, `🏦 **ADMIN:**\n${commonText}`, { parse_mode: "Markdown" });
+        }
+        if (process.env.KITCHEN_CHANNEL_ID) {
+            await bot.api.sendMessage(process.env.KITCHEN_CHANNEL_ID, `👨‍🍳 **OSHPAZLAR:**\n${commonText}`, { parse_mode: "Markdown" });
+        }
     } catch (e) {
         console.error("Xabarnoma xatosi:", e.message);
     }
 }
 
 const getMainMenu = (lang) => {
-    return new Keyboard().text(i18n[lang].order).row().text(i18n[lang].feedback).text(i18n[lang].settings).resized();
+    return new Keyboard()
+        .text(i18n[lang].order).row()
+        .text(i18n[lang].feedback).text(i18n[lang].settings)
+        .resized();
 };
 
-// --- 4. KOMANDALAR ---
+// --- 3. BOT BUYRUQLARI ---
+
 bot.command("start", async (ctx) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.from.id);
     if (user && user.fullName && user.phone) {
@@ -118,7 +120,8 @@ bot.command("start", async (ctx) => {
     }
 });
 
-// --- 5. CALLBACKS ---
+// --- 4. CALLBACKS VA TO'LOV ---
+
 bot.callbackQuery(/^lang_/, async (ctx) => {
     const lang = ctx.callbackQuery.data.split("_")[1];
     db.prepare('INSERT OR IGNORE INTO users (id, lang) VALUES (?, ?)').run(ctx.from.id, lang);
@@ -137,19 +140,31 @@ bot.callbackQuery(/^lang_/, async (ctx) => {
 bot.callbackQuery(/^pay_/, async (ctx) => {
     const action = ctx.callbackQuery.data;
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.from.id);
+    const lang = user?.lang || 'uz';
     const order = ctx.session.tempOrder;
-    if (!order || !user) return ctx.answerCallbackQuery("Xatolik yuz berdi.");
 
-    const lang = user.lang || 'uz';
+    if (!order) return ctx.answerCallbackQuery("Buyurtma topilmadi.");
 
     if (action === 'pay_click') {
-        const cleanPrice = parseFloat(order.price.toString().replace(/\s/g, ''));
-        await ctx.api.sendInvoice(
-            ctx.from.id, i18n[lang].payment_title, i18n[lang].payment_description.replace('{items}', order.items.substring(0, 100)),
-            `order_${Date.now()}`, process.env.PROVIDER_TOKEN, "UZS", [{ label: "Jami", amount: Math.round(cleanPrice * 100) }]
-        );
-        await ctx.deleteMessage().catch(() => {});
-    } else {
+        try {
+            const cleanPrice = parseFloat(order.price.toString().replace(/\s/g, ''));
+            const priceInTiyin = Math.round(cleanPrice * 100);
+
+            await ctx.api.sendInvoice(
+                ctx.from.id,
+                i18n[lang].payment_title,
+                i18n[lang].payment_description.replace('{items}', order.items.substring(0, 100)),
+                `order_${ctx.from.id}_${Date.now()}`,
+                process.env.PROVIDER_TOKEN,
+                "UZS",
+                [{ label: "Jami", amount: priceInTiyin }]
+            );
+            await ctx.deleteMessage().catch(() => {});
+        } catch (e) { 
+            console.error("To'lov xatosi:", e.message); 
+            await ctx.reply("To'lov tizimida xatolik yuz berdi.");
+        }
+    } else if (action === 'pay_cash') {
         await sendOrderNotifications(user, order, "💵 Naqd");
         await ctx.editMessageText(lang === 'uz' ? "✅ Buyurtmangiz qabul qilindi (Naqd)." : "✅ Заказ принят (Наличные).");
         ctx.session.tempOrder = null;
@@ -157,14 +172,27 @@ bot.callbackQuery(/^pay_/, async (ctx) => {
     await ctx.answerCallbackQuery();
 });
 
-// --- 6. DATA HANDLERS ---
+bot.on("pre_checkout_query", (ctx) => ctx.answerPreCheckoutQuery(true));
+
+bot.on("message:successful_payment", async (ctx) => {
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.from.id);
+    const order = ctx.session.tempOrder;
+    if (order && user) await sendOrderNotifications(user, order, "💳 Click");
+    await ctx.reply(i18n[user?.lang || 'uz'].payment_success);
+    ctx.session.tempOrder = null;
+});
+
+// --- 5. HANDLINGLAR ---
+
 bot.on("message:web_app_data", async (ctx) => {
     try {
         const data = JSON.parse(ctx.message.web_app_data.data);
         if (data.action === "new_order") {
             ctx.session.tempOrder = { items: data.items, price: data.total_price };
-            const payKeyboard = new InlineKeyboard().text("💳 Click", "pay_click").row().text("💵 Naqd", "pay_cash");
-            await ctx.reply(`💰 Summa: ${Number(data.total_price).toLocaleString()} so'm\nTo'lov turini tanlang:`, { reply_markup: payKeyboard });
+            const payKeyboard = new InlineKeyboard()
+                .text("💳 Click", "pay_click").row()
+                .text("💵 Naqd", "pay_cash");
+            await ctx.reply(`💰 Summa: ${data.total_price.toLocaleString()} so'm\nTo'lov turini tanlang:`, { reply_markup: payKeyboard });
         }
     } catch (e) { console.error(e); }
 });
@@ -178,8 +206,14 @@ bot.on("message:text", async (ctx) => {
         ctx.session.step = "ASK_PHONE";
         await ctx.reply(i18n[lang].ask_phone, { reply_markup: new Keyboard().requestContact("📱 Telefon yuborish").resized().oneTime() });
     } 
+    // "BUYURTMA BERISH" BOSILGANDA
     else if (ctx.message.text === i18n[lang].order) {
-        await ctx.reply(i18n[lang].lets_start, { reply_markup: new InlineKeyboard().webApp("🍟 Menyu", process.env.WEB_APP_URL) });
+        const orderKeyboard = new InlineKeyboard()
+            .webApp("🍟 Menyu", process.env.WEB_APP_URL);
+
+        await ctx.reply(i18n[lang].lets_start, { 
+            reply_markup: orderKeyboard 
+        });
     } 
     else if (ctx.message.text === i18n[lang].settings) {
         const text = i18n[lang].current_data.replace('{name}', user.fullName || '—').replace('{phone}', user.phone || '—').replace('{lang}', lang);
@@ -188,18 +222,10 @@ bot.on("message:text", async (ctx) => {
 });
 
 bot.on("message:contact", async (ctx) => {
-    const user = db.prepare('SELECT lang FROM users WHERE id = ?').get(ctx.from.id);
     db.prepare('UPDATE users SET phone = ? WHERE id = ?').run(ctx.message.contact.phone_number, ctx.from.id);
     ctx.session.step = "IDLE";
+    const user = db.prepare('SELECT lang FROM users WHERE id = ?').get(ctx.from.id);
     await ctx.reply(i18n[user.lang].done, { reply_markup: getMainMenu(user.lang) });
-});
-
-bot.on("pre_checkout_query", (ctx) => ctx.answerPreCheckoutQuery(true));
-bot.on("message:successful_payment", async (ctx) => {
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.from.id);
-    if (ctx.session.tempOrder && user) await sendOrderNotifications(user, ctx.session.tempOrder, "💳 Click");
-    await ctx.reply(i18n[user?.lang || 'uz'].payment_success);
-    ctx.session.tempOrder = null;
 });
 
 bot.callbackQuery("edit_name", async (ctx) => {
@@ -208,9 +234,11 @@ bot.callbackQuery("edit_name", async (ctx) => {
     await ctx.reply("Yangi ismni kiriting:");
 });
 
-// --- 7. START ---
+bot.catch((err) => console.error(`Bot xatosi:`, err.error));
+
+// --- 6. ISHGA TUSHIRISH ---
 (async () => {
     await bot.api.deleteWebhook({ drop_pending_updates: true });
     bot.start();
-    app.listen(process.env.PORT || 3000, () => console.log('✅ Bot va API tayyor!'));
+    app.listen(process.env.PORT || 3000, () => console.log('✅ Bot tayyor!'));
 })();

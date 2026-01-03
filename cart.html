@@ -59,7 +59,7 @@
     <div id="cart-footer" class="cart-summary" style="display: none;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
             <span style="color: #636e72;">Jami summa:</span>
-            <b id="total-price" style="font-size: 18px; color: var(--primary);">0 so'm</b>
+            <b id="total-price-display" style="font-size: 18px; color: var(--primary);">0 so'm</b>
         </div>
         <button id="order-btn" style="width: 100%; background: var(--primary); color: white; border: none; padding: 15px; border-radius: 15px; font-weight: bold; font-size: 16px; cursor: pointer;">
             Buyurtma berish
@@ -84,7 +84,7 @@
     </nav>
 
     <script>
-        let tg = window.Telegram.WebApp;
+        const tg = window.Telegram.WebApp;
         tg.expand();
 
         const foods = [
@@ -106,7 +106,7 @@
         ];
 
         function renderCart() {
-            let cart = JSON.parse(localStorage.getItem('cart')) || {};
+            const cart = JSON.parse(localStorage.getItem('cart')) || {};
             const container = document.getElementById('cart-items');
             const footer = document.getElementById('cart-footer');
             container.innerHTML = '';
@@ -114,7 +114,7 @@
             let hasItems = false;
 
             for (let id in cart) {
-                const food = foods.find(f => f.id == parseInt(id));
+                const food = foods.find(f => f.id === parseInt(id));
                 if (food) {
                     hasItems = true;
                     const count = cart[id];
@@ -141,7 +141,7 @@
                 footer.style.display = 'none';
             } else {
                 footer.style.display = 'block';
-                document.getElementById('total-price').innerText = total.toLocaleString() + " so'm";
+                document.getElementById('total-price-display').innerText = total.toLocaleString() + " so'm";
             }
             updateBadge();
         }
@@ -165,36 +165,39 @@
             }
         }
 
-        // --- BUYURTMA BERISH MANTIQI ---
+        // --- BUYURTMA BERISH TUGMASI ---
         document.getElementById('order-btn').onclick = function() {
             const currentCart = JSON.parse(localStorage.getItem('cart')) || {};
             let orderSummary = [];
-            let total = 0;
+            let totalAmount = 0;
 
             for (let id in currentCart) {
-                const food = foods.find(f => f.id == parseInt(id));
+                const food = foods.find(f => f.id === parseInt(id));
                 if (food) {
                     orderSummary.push(`${food.name} (${currentCart[id]}x)`);
-                    total += food.price * currentCart[id];
+                    totalAmount += food.price * currentCart[id];
                 }
             }
 
-            if (orderSummary.length === 0) return;
+            if (orderSummary.length === 0) {
+                alert("Savatchangiz bo'sh!");
+                return;
+            }
 
-            // Botga yuboriladigan ma'lumot (bot.js kutayotgan formatda)
+            // Botga yuboriladigan ob'ekt
             const dataToSend = {
                 action: "new_order",
                 items: orderSummary.join(", "),
-                total_price: total
+                total_price: totalAmount
             };
 
-            // Telegramga yuborish
+            // Telegram Botga ma'lumot uzatish
             tg.sendData(JSON.stringify(dataToSend));
             
             // Savatni tozalash
             localStorage.removeItem('cart');
             
-            // Web Appni yopish
+            // WebAppni yopish
             tg.close();
         };
 
