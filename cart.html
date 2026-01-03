@@ -41,6 +41,13 @@
         .empty-cart { text-align: center; margin-top: 50px; color: #999; }
         .cart-summary { background: var(--white); padding: 20px; border-radius: 20px; margin-top: 20px; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); }
 
+        /* MODAL OYNASI STILI */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; align-items: center; justify-content: center; padding: 20px; }
+        .modal-content { background: white; padding: 25px; border-radius: 25px; width: 100%; max-width: 400px; text-align: center; }
+        .payment-btn { width: 100%; padding: 15px; margin: 10px 0; border: none; border-radius: 15px; font-weight: bold; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .btn-click { background: #005aff; color: white; }
+        .btn-cash { background: #f1f2f6; color: #2d3436; }
+
         .navbar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--white); height: 70px; display: flex; justify-content: space-around; align-items: center; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); border-radius: 20px 20px 0 0; z-index: 1000; }
         .nav-item { display: flex; flex-direction: column; align-items: center; text-decoration: none; color: #b2bec3; font-size: 12px; font-weight: 600; }
         .nav-item.active { color: var(--primary); }
@@ -64,8 +71,21 @@
             <b id="total-price" style="font-size: 18px; color: var(--primary);">0 so'm</b>
         </div>
         <button id="order-btn" style="width: 100%; background: var(--primary); color: white; border: none; padding: 15px; border-radius: 15px; font-weight: bold; font-size: 16px;">
-            Buyurtmani tasdiqlash
+            Buyurtma berish
         </button>
+    </div>
+
+    <div id="payment-modal" class="modal">
+        <div class="modal-content">
+            <h3>To'lov usulini tanlang</h3>
+            <button class="payment-btn btn-click" onclick="sendOrder('click')">
+                💳 Click orqali to'lash
+            </button>
+            <button class="payment-btn btn-cash" onclick="sendOrder('cash')">
+                🚚 Kuryerga naqd to'lash
+            </button>
+            <button style="background:none; border:none; color:#999; margin-top:15px;" onclick="closeModal()">Bekor qilish</button>
+        </div>
     </div>
 
     <nav class="navbar">
@@ -169,44 +189,41 @@
             }
         }
 
-        // --- BUYURTMANI TASDIQLASH ---
-document.getElementById('order-btn').onclick = function() {
-    const currentCart = JSON.parse(localStorage.getItem('cart')) || {};
-    let orderSummary = [];
-    let total = 0;
+        // --- MODAL BOSHQARUVI ---
+        document.getElementById('order-btn').onclick = function() {
+            document.getElementById('payment-modal').style.display = 'flex';
+        };
 
-    // Savatdagi ma'lumotlarni yig'ish
-    for (let id in currentCart) {
-        const food = foods.find(f => f.id == parseInt(id));
-        if (food) {
-            orderSummary.push(`${food.name} (${currentCart[id]}x)`);
-            total += food.price * currentCart[id];
+        function closeModal() {
+            document.getElementById('payment-modal').style.display = 'none';
         }
-    }
 
-    if (orderSummary.length === 0) {
-        alert("Savatcha bo'sh!");
-        return;
-    }
+        // --- BUYURTMANI BOTGA YUBORISH ---
+        function sendOrder(method) {
+            const currentCart = JSON.parse(localStorage.getItem('cart')) || {};
+            let orderSummary = [];
+            let total = 0;
 
-    // BOTGA MA'LUMOT YUBORISH
-    const dataToSend = {
-        action: "new_order",
-        items: orderSummary.join(", "),
-        total_price: total
-    };
+            for (let id in currentCart) {
+                const food = foods.find(f => f.id == parseInt(id));
+                if (food) {
+                    orderSummary.push(`${food.name} (${currentCart[id]}x)`);
+                    total += food.price * currentCart[id];
+                }
+            }
 
-    // Telegram botga yuborish
-    tg.sendData(JSON.stringify(dataToSend));
+            const dataToSend = {
+                action: "new_order",
+                method: method, // 'click' yoki 'cash'
+                items: orderSummary.join(", "),
+                total_price: total
+            };
 
-    // Savatchani tozalash
-    localStorage.removeItem('cart');
-    
-    if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-    
-    // Ilovani yopish
-    tg.close();
-};
+            tg.sendData(JSON.stringify(dataToSend));
+            localStorage.removeItem('cart');
+            if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+            tg.close();
+        }
 
         window.onload = renderCart;
     </script>

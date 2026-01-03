@@ -63,7 +63,6 @@ const getMainMenu = (lang) => {
         .resized();
 };
 
-// --- SOZLAMALARNI KO'RSATISH FUNKSIYASI ---
 async function showSettings(ctx, user) {
     const lang = user.lang || "uz";
     const langName = lang === 'uz' ? "O'zbekcha 🇺🇿" : "Русский 🇷🇺";
@@ -81,7 +80,7 @@ async function showSettings(ctx, user) {
     await ctx.reply(text, { reply_markup: keyboard });
 }
 
-// 1. START BUYRUG'I
+// 1. START
 bot.command("start", async (ctx) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.from.id);
     if (user && user.fullName && user.phone) {
@@ -94,7 +93,7 @@ bot.command("start", async (ctx) => {
     }
 });
 
-// 2. CALLBACK QUERY (Tugmalar uchun)
+// 2. CALLBACKS
 bot.callbackQuery(/^lang_/, async (ctx) => {
     const lang = ctx.callbackQuery.data.split("_")[1];
     db.prepare('INSERT OR IGNORE INTO users (id, lang) VALUES (?, ?)').run(ctx.from.id, lang);
@@ -134,41 +133,50 @@ bot.callbackQuery("edit_lang", async (ctx) => {
     });
 });
 
-// 3. MINI APP VA TO'LOV LOGIKASI
+// 3. MINI APP MA'LUMOTI (IKKI XIL TO'LOV USULI BILAN)
 bot.on("message:web_app_data", async (ctx) => {
     try {
         const data = JSON.parse(ctx.message.web_app_data.data);
-        const user = db.prepare('SELECT lang FROM users WHERE id = ?').get(ctx.from.id);
+        const user = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.from.id);
         const lang = user?.lang || 'uz';
 
-        if (data.action === "payment_request") {
-            // Click to'lov havolasini yaratish
-            const serviceId = process.env.CLICK_SERVICE_ID;
-            const merchantId = process.env.CLICK_MERCHANT_ID;
-            const amount = data.total_price * 100; // Click tiyin da ishlaydi
-            const transactionParam = `order_${ctx.from.id}_${Date.now()}`;
-            const returnUrl = process.env.RETURN_URL || 'https://yourapp.com/success';
+        if (data.action === "new_order") {
+            const methodText = data.method === 'click' ? "💳 Click" : "💵 Naqd (Kuryerga)";
+            
+            // --- ADMINGA XABAR YUBORISH ---
+            const orderText = `🛍 **YANGI BUYURTMA!**\n\n` +
+                              `👤 Mijoz: ${user?.fullName || ctx.from.first_name}\n` +
+                              `📞 Tel: ${user?.phone || "Noma'lum"}\n` +
+                              `📦 Mahsulotlar: ${data.items}\n` +
+                              `💰 Jami: ${data.total_price.toLocaleString()} so'm\n` +
+                              `🏦 To'lov turi: ${methodText}`;
 
-            const paymentUrl = `https://my.click.uz/pay/?service_id=${serviceId}&merchant_id=${merchantId}&amount=${amount}&transaction_param=${transactionParam}&return_url=${encodeURIComponent(returnUrl)}`;
+            await bot.api.sendMessage(process.env.ADMIN_ID, orderText, { parse_mode: "Markdown" });
 
-            await ctx.reply(`Buyurtma: ${data.items}\nJami: ${amount.toLocaleString()} so'm\n\nTo'lov uchun havola: ${paymentUrl}`, {
-                reply_markup: new InlineKeyboard().url("To'lash", paymentUrl)
-            });
+            // --- FOYDALANUVCHIGA JAVOB ---
+            if (data.method === 'click') {
+                const amount = data.total_price;
+                const transactionParam = `order_${ctx.from.id}_${Date.now()}`;
+                const paymentUrl = `https://my.click.uz/pay/?service_id=${process.env.CLICK_SERVICE_ID}&merchant_id=${process.env.CLICK_MERCHANT_ID}&amount=${amount}&transaction_param=${transactionParam}`;
+
+                await ctx.reply(`✅ Buyurtma qabul qilindi. To'lov turi: Click.\n\nTo'lov qilish uchun quyidagi tugmani bosing:`, {
+                    reply_markup: new InlineKeyboard().url("To'lash (Click)", paymentUrl)
+                });
+            } else {
+                const cashMsg = lang === 'uz' 
+                    ? `✅ Buyurtmangiz qabul qilindi!\n💰 To'lov turi: Naqd (kuryerga).\n📦 Tez orada kuryerimiz bog'lanadi.` 
+                    : `✅ Ваш заказ принят!\n💰 Способ оплаты: Наличными.\n📦 Скоро наш курьер свяжется с вами.`;
+                
+                await ctx.reply(cashMsg, { reply_markup: getMainMenu(lang) });
+            }
         }
     } catch (e) {
         console.error("WebAppData error:", e);
-        await ctx.reply("Xatolik yuz berdi. Qayta urinib ko'ring.");
+        await ctx.reply("Xatolik yuz berdi.");
     }
 });
 
-bot.on("pre_checkout_query", (ctx) => ctx.answerPreCheckoutQuery(true));
-
-bot.on("message:successful_payment", async (ctx) => {
-    const user = db.prepare('SELECT lang FROM users WHERE id = ?').get(ctx.from.id);
-    await ctx.reply(i18n[user?.lang || 'uz'].payment_success);
-});
-
-// 4. MATNLI XABARLARNI QABUL QILISH
+// 4. TEXT MESSAGES
 bot.on("message:text", async (ctx) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.from.id);
     const lang = user?.lang || "uz";
@@ -194,7 +202,10 @@ bot.on("message:text", async (ctx) => {
         switch (ctx.message.text) {
             case i18n[lang].order:
                 await ctx.reply("Menyuni oching:", {
-                    reply_markup: new InlineKeyboard().webApp("🍟 Menyu", `${process.env.WEB_APP_URL}`)
+                    reply_markup: new Keyboard()
+                        .webApp("🍟 Menyu", `${process.env.WEB_APP_URL}`)
+                        .resized()
+                        .oneTime()
                 });
                 break;
             case i18n[lang].settings:
@@ -215,13 +226,10 @@ bot.on("message:contact", async (ctx) => {
     await ctx.reply(i18n[user.lang].done, { reply_markup: getMainMenu(user.lang) });
 });
 
-// CLICK TO'LOV CALLBACK
 app.post('/payment/callback', (req, res) => {
     try {
-        const { click_trans_id, merchant_trans_id, amount, status } = req.body;
-        console.log('Payment callback:', req.body);
-        
-        if (status == 1) { // Muvaffaqiyatli to'lov
+        const { click_trans_id, merchant_trans_id, status } = req.body;
+        if (status == 1) {
             const parts = merchant_trans_id.split('_');
             if (parts[0] === 'order') {
                 const userId = parts[1];
@@ -230,12 +238,13 @@ app.post('/payment/callback', (req, res) => {
         }
         res.send('OK');
     } catch (e) {
-        console.error('Callback error:', e);
         res.status(500).send('Error');
     }
 });
 
 (async () => {
-    await bot.start();
-    app.listen(process.env.PORT || 3000, () => console.log('Server running on port', process.env.PORT || 3000));
+    bot.start().catch(err => console.error("Bot start error:", err));
+    app.listen(process.env.PORT || 3000, () => {
+        console.log('Server running on port', process.env.PORT || 3000);
+    });
 })();
