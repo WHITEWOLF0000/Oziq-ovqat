@@ -109,6 +109,40 @@ bot.callbackQuery(/^lang_/, async (ctx) => {
     }
 });
 
+// To'lov turi tanlanganda ishlovchi callback
+bot.callbackQuery(/^pay_/, async (ctx) => {
+    const data = ctx.callbackQuery.data.split(":");
+    const method = data[0]; // pay_click yoki pay_cash
+    const price = data[1];
+    const items = data[2];
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.from.id);
+    const methodText = method === 'pay_click' ? "💳 Click" : "💵 Naqd";
+
+    // Adminga xabar
+    const orderText = `🛍 **YANGI BUYURTMA!**\n\n` +
+                      `👤 Mijoz: ${user?.fullName}\n` +
+                      `📞 Tel: ${user?.phone}\n` +
+                      `📦 Mahsulotlar: ${items}\n` +
+                      `💰 Jami: ${parseInt(price).toLocaleString()} so'm\n` +
+                      `🏦 To'lov turi: ${methodText}`;
+
+    await bot.api.sendMessage(process.env.ADMIN_ID, orderText, { parse_mode: "Markdown" });
+
+    // Foydalanuvchiga javob
+    if (method === 'pay_click') {
+        const transactionParam = `order_${ctx.from.id}_${Date.now()}`;
+        const paymentUrl = `https://my.click.uz/pay/?service_id=${process.env.CLICK_SERVICE_ID}&merchant_id=${process.env.CLICK_MERCHANT_ID}&amount=${price}&transaction_param=${transactionParam}`;
+
+        await ctx.editMessageText(`✅ To'lov usuli: Click tanlandi.\nSumma: ${parseInt(price).toLocaleString()} so'm\n\nTo'lovni amalga oshirish uchun tugmani bosing:`, {
+            reply_markup: new InlineKeyboard().url("💳 To'lash (Click)", paymentUrl)
+        });
+    } else {
+        await ctx.editMessageText(`✅ Buyurtmangiz qabul qilindi!\nTo'lov turi: Naqd (kuryerga).\n\nTez orada xizmatimiz xodimlari bog'lanishadi.`);
+    }
+    await ctx.answerCallbackQuery();
+});
+
 bot.callbackQuery("edit_name", async (ctx) => {
     const user = db.prepare('SELECT lang FROM users WHERE id = ?').get(ctx.from.id);
     ctx.session.step = "ASK_NAME";
@@ -133,7 +167,7 @@ bot.callbackQuery("edit_lang", async (ctx) => {
     });
 });
 
-// 3. MINI APP MA'LUMOTI (IKKI XIL TO'LOV USULI BILAN)
+// 3. MINI APP MA'LUMOTI
 bot.on("message:web_app_data", async (ctx) => {
     try {
         const data = JSON.parse(ctx.message.web_app_data.data);
@@ -141,38 +175,20 @@ bot.on("message:web_app_data", async (ctx) => {
         const lang = user?.lang || 'uz';
 
         if (data.action === "new_order") {
-            const methodText = data.method === 'click' ? "💳 Click" : "💵 Naqd (Kuryerga)";
+            // To'lov turini tanlash uchun Inline Keyboard
+            // Items juda uzun bo'lib ketmasligi uchun substring qilamiz
+            const shortItems = data.items.length > 30 ? data.items.substring(0, 30) + "..." : data.items;
             
-            // --- ADMINGA XABAR YUBORISH ---
-            const orderText = `🛍 **YANGI BUYURTMA!**\n\n` +
-                              `👤 Mijoz: ${user?.fullName || ctx.from.first_name}\n` +
-                              `📞 Tel: ${user?.phone || "Noma'lum"}\n` +
-                              `📦 Mahsulotlar: ${data.items}\n` +
-                              `💰 Jami: ${data.total_price.toLocaleString()} so'm\n` +
-                              `🏦 To'lov turi: ${methodText}`;
+            const payKeyboard = new InlineKeyboard()
+                .text("💳 Click orqali", `pay_click:${data.total_price}:${shortItems}`).row()
+                .text("💵 Naqd (Kuryerga)", `pay_cash:${data.total_price}:${shortItems}`);
 
-            await bot.api.sendMessage(process.env.ADMIN_ID, orderText, { parse_mode: "Markdown" });
-
-            // --- FOYDALANUVCHIGA JAVOB ---
-            if (data.method === 'click') {
-                const amount = data.total_price;
-                const transactionParam = `order_${ctx.from.id}_${Date.now()}`;
-                const paymentUrl = `https://my.click.uz/pay/?service_id=${process.env.CLICK_SERVICE_ID}&merchant_id=${process.env.CLICK_MERCHANT_ID}&amount=${amount}&transaction_param=${transactionParam}`;
-
-                await ctx.reply(`✅ Buyurtma qabul qilindi. To'lov turi: Click.\n\nTo'lov qilish uchun quyidagi tugmani bosing:`, {
-                    reply_markup: new InlineKeyboard().url("To'lash (Click)", paymentUrl)
-                });
-            } else {
-                const cashMsg = lang === 'uz' 
-                    ? `✅ Buyurtmangiz qabul qilindi!\n💰 To'lov turi: Naqd (kuryerga).\n📦 Tez orada kuryerimiz bog'lanadi.` 
-                    : `✅ Ваш заказ принят!\n💰 Способ оплаты: Наличными.\n📦 Скоро наш курьер свяжется с вами.`;
-                
-                await ctx.reply(cashMsg, { reply_markup: getMainMenu(lang) });
-            }
+            await ctx.reply(`💰 Buyurtma summasi: ${data.total_price.toLocaleString()} so'm\n\nIltimos, to'lov usulini tanlang:`, {
+                reply_markup: payKeyboard
+            });
         }
     } catch (e) {
         console.error("WebAppData error:", e);
-        await ctx.reply("Xatolik yuz berdi.");
     }
 });
 
@@ -228,7 +244,7 @@ bot.on("message:contact", async (ctx) => {
 
 app.post('/payment/callback', (req, res) => {
     try {
-        const { click_trans_id, merchant_trans_id, status } = req.body;
+        const { merchant_trans_id, status } = req.body;
         if (status == 1) {
             const parts = merchant_trans_id.split('_');
             if (parts[0] === 'order') {

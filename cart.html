@@ -75,19 +75,6 @@
         </button>
     </div>
 
-    <div id="payment-modal" class="modal">
-        <div class="modal-content">
-            <h3>To'lov usulini tanlang</h3>
-            <button class="payment-btn btn-click" onclick="sendOrder('click')">
-                💳 Click orqali to'lash
-            </button>
-            <button class="payment-btn btn-cash" onclick="sendOrder('cash')">
-                🚚 Kuryerga naqd to'lash
-            </button>
-            <button style="background:none; border:none; color:#999; margin-top:15px;" onclick="closeModal()">Bekor qilish</button>
-        </div>
-    </div>
-
     <nav class="navbar">
         <a href="index.html" class="nav-item">
             <span class="nav-icon">🏠</span>
@@ -199,31 +186,31 @@
         }
 
         // --- BUYURTMANI BOTGA YUBORISH ---
-        function sendOrder(method) {
-            const currentCart = JSON.parse(localStorage.getItem('cart')) || {};
-            let orderSummary = [];
-            let total = 0;
+document.getElementById('order-btn').onclick = function() {
+    const currentCart = JSON.parse(localStorage.getItem('cart')) || {};
+    let orderSummary = [];
+    let total = 0;
 
-            for (let id in currentCart) {
-                const food = foods.find(f => f.id == parseInt(id));
-                if (food) {
-                    orderSummary.push(`${food.name} (${currentCart[id]}x)`);
-                    total += food.price * currentCart[id];
-                }
-            }
-
-            const dataToSend = {
-                action: "new_order",
-                method: method, // 'click' yoki 'cash'
-                items: orderSummary.join(", "),
-                total_price: total
-            };
-
-            tg.sendData(JSON.stringify(dataToSend));
-            localStorage.removeItem('cart');
-            if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-            tg.close();
+    for (let id in currentCart) {
+        const food = foods.find(f => f.id == parseInt(id));
+        if (food) {
+            orderSummary.push(`${food.name} (${currentCart[id]}x)`);
+            total += food.price * currentCart[id];
         }
+    }
+
+    if (orderSummary.length === 0) return;
+
+    const dataToSend = {
+        action: "initiate_order", // Shunchaki buyurtmani boshlash
+        items: orderSummary.join(", "),
+        total_price: total
+    };
+
+    tg.sendData(JSON.stringify(dataToSend));
+    localStorage.removeItem('cart');
+    tg.close();
+};
 
         window.onload = renderCart;
     </script>
