@@ -2,14 +2,14 @@ require('dotenv').config();
 const { Bot, InlineKeyboard, Keyboard, session } = require("grammy");
 const Database = require('better-sqlite3');
 const express = require('express');
-const cors = require('cors'); // Mini App dan so'rov yuborish uchun kerak
+const cors = require('cors');
 
 const db = new Database('avigo.db');
 const bot = new Bot(process.env.BOT_TOKEN);
 const app = express();
 
 app.use(express.json());
-app.use(cors()); // Mini App brauzerda xatolik bermasligi uchun
+app.use(cors()); // Mini App brauzerda xatolik bermasligi uchun shart!
 
 // --- 1. JADVALLARNI SOZLASH ---
 db.prepare(`
@@ -32,17 +32,17 @@ db.prepare(`
     )
 `).run();
 
-// Ustunlarni tekshirish va qo'shish
+// Ustunlar mavjudligini tekshirish
 const columns = ['amount', 'method'];
 columns.forEach(col => {
     try {
         db.prepare(`ALTER TABLE orders ADD COLUMN ${col} TEXT`).run();
-    } catch (e) {}
+    } catch (e) { /* Ustun allaqachon mavjud bo'lsa xatoni o'tkazib yuboradi */ }
 });
 
 // --- 2. MINI APP UCHUN API ENDPOINTLAR ---
 
-// Profil bo'limida oxirgi buyurtmalarni ko'rsatish uchun API
+// Profil ma'lumotlari va buyurtmalarni olish
 app.get('/api/orders/:user_id', (req, res) => {
     const userId = req.params.user_id;
     try {
@@ -54,12 +54,15 @@ app.get('/api/orders/:user_id', (req, res) => {
             LIMIT 10
         `).all(userId);
         
+        // Frontend "amount" ni kutyapti, biz "amount" yuboryapmiz
         res.json({ success: true, orders });
     } catch (e) {
+        console.error("API Xatosi:", e.message);
         res.status(500).json({ success: false, error: e.message });
     }
 });
 
+// --- 3. BOT MANTIQI ---
 bot.use(session({
     initial: () => ({ step: "IDLE", tempOrder: null })
 }));
@@ -95,8 +98,6 @@ const i18n = {
     }
 };
 
-// --- 3. YORDAMCHI FUNKSIYALAR ---
-
 async function sendOrderNotifications(user, order, methodText) {
     const commonText = `📦 **YANGI BUYURTMA!**\n\n` +
                        `👤 Mijoz: ${user.fullName || "Noma'lum"}\n` +
@@ -113,9 +114,6 @@ async function sendOrderNotifications(user, order, methodText) {
         if (process.env.ADMIN_ID) {
             await bot.api.sendMessage(process.env.ADMIN_ID, `🏦 **ADMIN:**\n${commonText}`, { parse_mode: "Markdown" });
         }
-        if (process.env.KITCHEN_CHANNEL_ID) {
-            await bot.api.sendMessage(process.env.KITCHEN_CHANNEL_ID, `👨‍🍳 **OSHPAZLAR:**\n${commonText}`, { parse_mode: "Markdown" });
-        }
     } catch (e) {
         console.error("Xabarnoma xatosi:", e.message);
     }
@@ -128,8 +126,6 @@ const getMainMenu = (lang) => {
         .resized();
 };
 
-// --- 4. BOT BUYRUQLARI ---
-
 bot.command("start", async (ctx) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(ctx.from.id);
     if (user && user.fullName && user.phone) {
@@ -141,8 +137,6 @@ bot.command("start", async (ctx) => {
         });
     }
 });
-
-// --- 5. CALLBACKS VA TO'LOV ---
 
 bot.callbackQuery(/^lang_/, async (ctx) => {
     const lang = ctx.callbackQuery.data.split("_")[1];
@@ -183,7 +177,6 @@ bot.callbackQuery(/^pay_/, async (ctx) => {
             );
             await ctx.deleteMessage().catch(() => {});
         } catch (e) { 
-            console.error("To'lov xatosi:", e.message); 
             await ctx.reply("To'lov tizimida xatolik yuz berdi.");
         }
     } else if (action === 'pay_cash') {
@@ -227,11 +220,8 @@ bot.on("message:text", async (ctx) => {
         await ctx.reply(i18n[lang].ask_phone, { reply_markup: new Keyboard().requestContact("📱 Telefon yuborish").resized().oneTime() });
     } 
     else if (ctx.message.text === i18n[lang].order) {
-        const orderKeyboard = new InlineKeyboard()
-            .webApp("🍟 Menyu", process.env.WEB_APP_URL);
-
         await ctx.reply(i18n[lang].lets_start, { 
-            reply_markup: orderKeyboard 
+            reply_markup: new InlineKeyboard().webApp("🍟 Menyu", process.env.WEB_APP_URL)
         });
     } 
     else if (ctx.message.text === i18n[lang].settings) {
@@ -255,9 +245,8 @@ bot.callbackQuery("edit_name", async (ctx) => {
 
 bot.catch((err) => console.error(`Bot xatosi:`, err.error));
 
-// --- 6. ISHGA TUSHIRISH ---
 (async () => {
     await bot.api.deleteWebhook({ drop_pending_updates: true });
     bot.start();
-    app.listen(process.env.PORT || 3000, () => console.log('✅ Bot va API tayyor!'));
+    app.listen(process.env.PORT || 3000, () => console.log('✅ Server running on port ' + (process.env.PORT || 3000)));
 })();
