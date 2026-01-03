@@ -55,7 +55,6 @@
             box-shadow: 0 4px 10px rgba(0,0,0,0.02);
         }
 
-        /* NAVBAR STILI */
         .navbar {
             position: fixed; bottom: 0; left: 0; right: 0;
             background: var(--white); height: 70px;
@@ -85,25 +84,21 @@
 <body>
 
     <div class="header-nav">
-        <button class="btn-close" onclick="goBack()">✕ Yopish</button>
+        <button class="btn-close" onclick="tg.close()">✕ Yopish</button>
     </div>
 
     <div class="profile-card">
         <div class="avatar" id="avatarLetter">?</div>
-        <h2 id="displayFullName" style="margin: 0; font-size: 20px;">Yuklanmoqda...</h2>
+        <h2 id="displayFullName" style="margin: 0; font-size: 20px;">Foydalanuvchi</h2>
 
         <div class="user-details">
             <div class="detail-item">
-                <span>Telefon raqam</span>
-                <b id="displayPhone">-- --- -- --</b>
+                <span>Telegram ID</span>
+                <b id="displayId">---------</b>
             </div>
             <div class="detail-item">
                 <span>Dastur tili</span>
-                <b id="displayLang">O'zbekcha</b>
-            </div>
-            <div class="detail-item">
-                <span>Telegram ID</span>
-                <b id="displayId">---------</b>
+                <b id="displayLang">Yuklanmoqda...</b>
             </div>
         </div>
     </div>
@@ -136,14 +131,9 @@
         let tg = window.Telegram.WebApp;
         tg.expand();
         
-        tg.BackButton.show();
-        tg.onEvent('backButtonClicked', goBack);
+        // API manzilingizni bu yerga yozing
+        const API_BASE_URL = "https://sizning-domeningiz.uz"; 
 
-        function goBack() {
-            window.location.href = 'index.html';
-        }
-
-        // Savatchadagi raqamni yangilash
         function updateBadge() {
             let cart = JSON.parse(localStorage.getItem('cart')) || {};
             let count = Object.values(cart).reduce((a, b) => a + b, 0);
@@ -152,54 +142,54 @@
             badge.style.display = count > 0 ? 'block' : 'none';
         }
 
-        const API_BASE_URL = "https://sizning-api-manzilingiz.uz"; 
-
-        async function loadUserData() {
-            updateBadge(); // Badge'ni yuklash
+        async function loadProfile() {
+            updateBadge();
             const user = tg.initDataUnsafe?.user;
-            if (!user) return;
+            if (!user) {
+                document.getElementById('ordersHistory').innerHTML = "Telegram ma'lumotlari topilmadi.";
+                return;
+            }
 
-            // Telegram WebApp orqali ism-familiyani chiqarish (API ishlamasa ham ko'rinishi uchun)
-            document.getElementById('displayFullName').innerText = (user.first_name || "") + " " + (user.last_name || "");
+            // Dastlabki ma'lumotlar
             document.getElementById('displayId').innerText = user.id;
-            document.getElementById('avatarLetter').innerText = user.first_name ? user.first_name.charAt(0) : "?";
+            document.getElementById('displayFullName').innerText = user.first_name + (user.last_name ? " " + user.last_name : "");
+            document.getElementById('avatarLetter').innerText = user.first_name.charAt(0);
+            document.getElementById('displayLang').innerText = user.language_code === 'ru' ? "Русский" : "O'zbekcha";
 
             try {
-                const response = await fetch(`${API_BASE_URL}/api/user/${user.id}`);
-                const userData = await response.json();
+                // Buyurtmalar tarixini olish
+                const response = await fetch(`${API_BASE_URL}/api/orders/${user.id}`);
+                const data = await response.json();
 
-                if (userData) {
-                    document.getElementById('displayFullName').innerText = userData.fullName;
-                    document.getElementById('displayPhone').innerText = userData.phone || "Kiritilmagan";
-                    document.getElementById('displayLang').innerText = 
-                        userData.lang === 'uz' ? "O'zbekcha" : 
-                        userData.lang === 'ru' ? "Русский" : "O'zbekcha";
-                    document.getElementById('avatarLetter').innerText = userData.fullName.charAt(0);
-                }
-
-                const ordersRes = await fetch(`${API_BASE_URL}/api/orders/${user.id}`);
-                const orders = await ordersRes.json();
                 const container = document.getElementById('ordersHistory');
                 
-                if (!orders || orders.length === 0) {
-                    container.innerHTML = "<p style='text-align:center; color:#999;'>Buyurtmalar mavjud emas</p>";
-                } else {
-                    container.innerHTML = orders.map(o => `
+                if (data.success && data.orders.length > 0) {
+                    container.innerHTML = data.orders.map(o => {
+                        // Sanani chiroyli ko'rinishga keltirish
+                        const date = new Date(o.date).toLocaleString('uz-UZ', {
+                            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                        });
+                        
+                        return `
                         <div class="order-card">
-                            <div style="font-size: 11px; color: #999; margin-bottom: 5px;">${o.date}</div>
-                            <b style="font-size: 14px;">${o.items}</b><br>
-                            <span style="color: var(--primary); font-weight: bold; font-size: 14px;">${o.total.toLocaleString()} so'm</span>
+                            <div style="font-size: 11px; color: #999; margin-bottom: 5px;">📅 ${date}</div>
+                            <b style="font-size: 14px; display: block; margin-bottom: 5px;">${o.items}</b>
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <span style="color: var(--primary); font-weight: bold; font-size: 14px;">${Number(o.amount).toLocaleString()} so'm</span>
+                                <span style="font-size: 12px; background: #eee; padding: 2px 8px; border-radius: 10px;">${o.method}</span>
+                            </div>
                         </div>
-                    `).join('');
+                    `}).join('');
+                } else {
+                    container.innerHTML = "<p style='text-align:center; color:#999; margin-top: 20px;'>Hali buyurtmalar mavjud emas</p>";
                 }
             } catch (error) {
-                console.error("Xato:", error);
-                // Xatolik bo'lsa ham buyurtmalar qismini tozalaymiz
-                document.getElementById('ordersHistory').innerHTML = "<p style='text-align:center; color:#999;'>Ma'lumotlarni yuklab bo'lmadi</p>";
+                console.error("API Error:", error);
+                document.getElementById('ordersHistory').innerHTML = "<p style='text-align:center; color:red;'>Tarixni yuklashda xatolik yuz berdi</p>";
             }
         }
 
-        loadUserData();
+        loadProfile();
     </script>
 </body>
 </html>
